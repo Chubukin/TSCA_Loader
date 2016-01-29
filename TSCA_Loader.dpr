@@ -1,8 +1,10 @@
 program TSCA_Loader;
 
 uses
-  Winapi.Windows, System.SyncObjs,
-  Main in 'Main.pas';
+  Winapi.Windows,
+  System.SyncObjs,
+  Main in 'Main.pas',
+  ExtUnit in 'ExtUnit.pas';
 
 var
   CheckEvent: TEvent;

@@ -30,13 +30,13 @@ end;
 
   function IniFileRead(DParam:string):String;
   function IniFileWrite(DParam,DValue:string):String;
-  function TSCAServerConect(TSCAServerName:string):boolean;
   function GetParseStringParams(SourceString: string; NumberParameter:integer):String;
   function GetParseStringCount(SourceString: string):Integer;
   function GetParseParameter(SourceString: string; ReturnValue:integer):String;
   function GetOSArchitectureToStr(const a: TOSVersion.TArchitecture): string;
   function GetOSInfo: string;
   procedure SetLog(TextLog:string);
+  procedure TSCAServerConect;
   procedure TSCAServerExchage;
   procedure SaveDataToStream(DataIn:TLanDataPackage; var StreamOut: TMemoryStream);
   procedure LoadDataFromStream(StreamIn: TMemoryStream; var DataOut:TLanDataPackage);
@@ -90,13 +90,13 @@ begin
     for I := 0 to CountFiles-1 do
     begin
       FileNameTmp:= GetParseStringParams(DataIn.DataFileName, i);
-      if FileExists(PathHomeProgramm+PathExchangeFolder+FileNameTmp)=True then
+      if FileExists(PathHomeProgramm+FileNameTmp)=True then
       begin
         SetLog('Предварительный поиск: Файл '+FileNameTmp+' найден');
         try
           try
             StreanFileTemp:=TMemoryStream.Create;
-            StreanFileTemp.LoadFromFile(PathHomeProgramm+PathExchangeFolder+FileNameTmp);
+            StreanFileTemp.LoadFromFile(PathHomeProgramm+FileNameTmp);
             DataIn.DataFileNameList:=DataIn.DataFileNameList+FileNameTmp+':'+IntToStr(StreanFileTemp.Size)+';';
           finally
             FreeAndNil(StreanFileTemp);
@@ -111,8 +111,6 @@ begin
   end;
   SetLog('Список передаваемых файлов: '+DataIn.DataFileNameList) ;
   DataIn.DataFileNameListLen:=Length(DataIn.DataFileNameList);
-  //SetLog('Данные SaveDataToStream CommandStr '+DataIn.CommandStr+' CommandParameters '+DataIn.CommandParameters+' CommandData '+DataIn.CommandData+' DataFileName '+DataIn.DataFileName+' DataFileNameList '+DataIn.DataFileNameList);
-  //SetLog('Данные SaveDataToStream CommandStrLen '+IntToStr(DataIn.CommandStrLen)+' CommandParametersLen '+IntToStr(DataIn.CommandParametersLen)+' CommandDataLen '+IntToStr(DataIn.CommandDataLen)+' DataFileNameLen '+IntToStr(DataIn.DataFileNameLen)+' DataFileNameListLen '+IntToStr(DataIn.DataFileNameListLen));
   StreamOut.Write(DataIn.CommandStrLen, SizeOf(DataIn.CommandStrLen));
   if(SizeOf(DataIn.CommandStrLen) > 0)then StreamOut.Write(DataIn.CommandStr[1], DataIn.CommandStrLen * SizeOf(DataIn.CommandStr[1]));
   StreamOut.Write(DataIn.CommandParametersLen, SizeOf(DataIn.CommandParametersLen));
@@ -129,13 +127,13 @@ begin
       for I := 0 to CountFiles-1 do
       begin
         FileNameTmp:= GetParseParameter(GetParseStringParams(DataIn.DataFileNameList, i),0);
-        if FileExists(PathHomeProgramm+PathExchangeFolder+FileNameTmp)=True then
+        if FileExists(PathHomeProgramm+FileNameTmp)=True then
         begin
           SetLog('Файл для отправки '+FileNameTmp+' найден');
           try
             try
               StreanFileTemp:=TMemoryStream.Create;
-              StreanFileTemp.LoadFromFile(PathHomeProgramm+PathExchangeFolder+FileNameTmp);
+              StreanFileTemp.LoadFromFile(PathHomeProgramm+FileNameTmp);
               StreamOut.CopyFrom(StreanFileTemp,StreanFileTemp.Size);
               SetLog('StreamOut.Position '+InttOsTR(StreamOut.Position)) ;
             finally
@@ -193,8 +191,8 @@ begin
           try
             StreanFileTemp:=TMemoryStream.Create;
             StreanFileTemp.CopyFrom(StreamIn,SizeFileTmp);
-            StreanFileTemp.SaveToFile(PathHomeProgramm+PathExchangeFolder+FileNameTmp);
-            if FileExists(PathHomeProgramm+PathExchangeFolder+FileNameTmp)=True then SetLog('Файл '+PathHomeProgramm+PathExchangeFolder+FileNameTmp+' найден') else SetLog('Файл '+PathHomeProgramm+PathExchangeFolder+FileNameTmp+' НЕ найден') ;
+            StreanFileTemp.SaveToFile(PathHomeProgramm+FileNameTmp);
+            if FileExists(PathHomeProgramm+FileNameTmp)=True then SetLog('Файл '+PathHomeProgramm+FileNameTmp+' найден') else SetLog('Файл '+PathHomeProgramm+FileNameTmp+' НЕ найден') ;
             DataOut.DataFileName:=DataOut.DataFileName+FileNameTmp+';';
           finally
             FreeAndNil(StreanFileTemp);
@@ -210,8 +208,6 @@ begin
     DataOut.DataFileNameList := '';
     DataOut.DataFileNameListLen:=0;
   end;
-  //SetLog('Данные LoadFromStream CommandStr '+DataOut.CommandStr+' CommandParameters '+DataOut.CommandParameters+' CommandData '+DataOut.CommandData+' DataFileName '+DataOut.DataFileName+' DataFileNameList '+DataOut.DataFileNameList);
-  //SetLog('Данные LoadFromStream CommandStrLen '+IntToStr(DataOut.CommandStrLen)+' CommandParametersLen '+IntToStr(DataOut.CommandParametersLen)+' CommandDataLen '+IntToStr(DataOut.CommandDataLen)+' DataFileNameLen '+IntToStr(DataOut.DataFileNameLen)+' DataFileNameListLen '+IntToStr(DataOut.DataFileNameListLen));
 end;
 
 procedure TLanClientEvent.LanClientConnected(Sender: TObject);
@@ -290,7 +286,7 @@ begin
   try
     LanClient.OnConnected:=LanClientEvent.LanClientConnected;
     LanClient.OnDisconnected:=LanClientEvent.LanClientDisconnected;
-    if TSCAServerConect(TSCAServerMain) = false then TSCAServerConect(TSCAServerSecondary);
+    TSCAServerConect;
     sleep(500);
     try
       if LanClient.Connected then
@@ -378,59 +374,60 @@ begin
   end;
 end;
 
-function TSCAServerConect(TSCAServerName:string):boolean;
+procedure TSCAServerConect;
 var
-  ConnectTimeoutTime, ServerPort:integer;
+  ConnectTimeoutTime, ServerPort, i:integer;
 begin
-  Result:=False;
-  LanClient.Host:=Trim(TSCAServerName);
-  if IniFileRead('ServerPort') <> '' then
+  for I := 0 to GetParseStringCount(IniFileRead('ServersName'))-1 do
   begin
-    try
-      ServerPort:=StrToInt(IniFileRead('ServerPort'));
-    except
-      on E: Exception do
-      begin
-        SetLog('Ошибка определения ServerPort '+E.ClassName + ': ' + E.Message);
-        ServerPort:=30380;
-      end;
-    end;
-  end
-  else
-  begin
-    ServerPort:=30380;
-  end;
-  LanClient.Port:=ServerPort;
-  if IniFileRead('ConnectTimeout') <> '' then
-  begin
-    try
-      ConnectTimeoutTime:=StrToInt(IniFileRead('ConnectTimeout'));
-    except
-      on E: Exception do
-      begin
-        SetLog('Ошибка определения ConnectTimeout '+E.ClassName + ': ' + E.Message);
-        ConnectTimeoutTime:=10000;
-      end;
-    end;
-  end
-  else
-  begin
-    ConnectTimeoutTime:=10000;
-  end;
-  LanClient.ConnectTimeout:=ConnectTimeoutTime;
-  SetLog('Соединение с серверам '+LanClient.Host+' через порт '+IntToStr(LanClient.Port)+' ConnectTimeout '+IntToStr(LanClient.ConnectTimeout));
-  try
-    LanClient.Connect;
-    Sleep(500);
-    SetLog('Соединение с сервером '+LanClient.Host+' Установлено');
-    Result:=True;
-  except
-    on E: Exception do
+    LanClient.Host:=GetParseStringParams(IniFileRead('ServersName'),i);
+    if IniFileRead('ServerPort') <> '' then
     begin
-      SetLog('Ошибка соединение с сервером '+E.ClassName + ': ' + E.Message);
-      Result:=False;
+      try
+        ServerPort:=StrToInt(IniFileRead('ServerPort'));
+      except
+        on E: Exception do
+        begin
+          SetLog('Ошибка определения ServerPort '+E.ClassName + ': ' + E.Message);
+          ServerPort:=30380;
+        end;
+      end;
+    end
+    else
+    begin
+      ServerPort:=30380;
+    end;
+    LanClient.Port:=ServerPort;
+    if IniFileRead('ConnectTimeout') <> '' then
+    begin
+      try
+        ConnectTimeoutTime:=StrToInt(IniFileRead('ConnectTimeout'));
+      except
+        on E: Exception do
+        begin
+          SetLog('Ошибка определения ConnectTimeout '+E.ClassName + ': ' + E.Message);
+          ConnectTimeoutTime:=10000;
+        end;
+      end;
+    end
+    else
+    begin
+      ConnectTimeoutTime:=10000;
+    end;
+    LanClient.ConnectTimeout:=ConnectTimeoutTime;
+    SetLog('Соединение с серверам '+LanClient.Host+' через порт '+IntToStr(LanClient.Port)+' ConnectTimeout '+IntToStr(LanClient.ConnectTimeout));
+    try
+      LanClient.Connect;
+      Sleep(500);
+      SetLog('Соединение с сервером '+LanClient.Host+' Установлено');
+    except
+      on E: Exception do
+      begin
+        SetLog('Ошибка соединение с сервером '+E.ClassName + ': ' + E.Message);
+      end;
     end;
   end;
+
 end;
 
 function GetParseStringParams(SourceString: string; NumberParameter:integer):String;
